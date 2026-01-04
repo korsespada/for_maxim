@@ -166,17 +166,39 @@ if file_path:
                         st.text("Нет фото")
 
                     # 2. Описание (обрезаем, чтобы плитка не была гигантской)
-                    full_desc = str(row.get('description', '')).strip()  # <-- имя колонки
+                    full_desc = str(row.get('description', '')).strip()
                     if full_desc.lower() == 'nan' or full_desc == '':
-                        short_desc = "Без описания"
+                        display_desc = "Без описания"
                     else:
-                        # первые 6 слов
-                        words = full_desc.split()
-                        short_desc = " ".join(words[:6])
-                        if len(words) > 6:
-                            short_desc += "…"
+                        display_desc = full_desc
                     
-                    st.caption(short_desc)
+                    # оборачиваем в span с классом для CSS‑обрезки
+                    st.markdown("""
+                    <style>
+                        div[data-testid="column"] {
+                            background-color: #f0f2f6;
+                            padding: 10px;
+                            border-radius: 5px;
+                            margin-bottom: 10px;
+                            text-align: center;
+                        }
+                        img {
+                            max-height: 150px;
+                            object-fit: cover;
+                            margin-bottom: 10px;
+                        }
+                        /* Описание в одну строку с троеточием */
+                        .one-line-desc {
+                            display: block;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                            font-size: 0.85rem;
+                            color: rgba(250, 250, 250, 0.8); /* подбери под тему */
+                            margin-top: 4px;
+                        }
+                    </style>
+                    """, unsafe_allow_html=True)
 
                     # 3. Цена
                     price = row.get('price', '')
