@@ -166,7 +166,7 @@ if file_path:
                         st.text("Нет фото")
 
                     # 2. Описание (обрезаем, чтобы плитка не была гигантской)
-                   full_desc = str(row.get('description', '')).strip()  # <-- имя колонки
+                    full_desc = str(row.get('description', '')).strip()  # <-- имя колонки
                     if full_desc.lower() == 'nan' or full_desc == '':
                         short_desc = "Без описания"
                     else:
