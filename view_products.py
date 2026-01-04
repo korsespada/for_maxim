@@ -1,53 +1,60 @@
+import os
 import streamlit as st
 import pandas as pd
 import json
-import os
 
-# 1. Настройки страницы
 st.set_page_config(page_title="Сетка товаров", layout="wide")
 
-# Путь к файлу - можно выбрать через интерфейс или указать по умолчанию
-DEFAULT_FILE_PATH = "szwego_products.csv"
+DATA_DIR = "data"        # папка с файлами в репо
+DEFAULT_FILE = "szwego_products.csv"
+
 
 def get_file_path():
-    """Получает путь к файлу через интерфейс или использует путь по умолчанию"""
     st.sidebar.title("📁 Настройки файла")
-    
-    # Выбор способа загрузки
+
     upload_method = st.sidebar.radio(
         "Способ загрузки:",
-        ["Выбрать файл", "Загрузить из компьютера"]
+        ["Выбрать из репозитория", "Загрузить из компьютера"]
     )
-    
-    if upload_method == "Выбрать файл":
-        # Поле для ввода пути к файлу
-        file_path = st.sidebar.text_input(
-            "Путь к CSV файлу:",
-            value=DEFAULT_FILE_PATH,
-            help="Укажите путь к файлу относительно текущей директории"
+
+    if upload_method == "Выбрать из репозитория":
+        # список csv из папки data
+        csv_files = [
+            f for f in os.listdir(DATA_DIR)
+            if f.lower().endswith(".csv")
+        ]
+
+        if not csv_files:
+            st.sidebar.error("В папке data нет CSV файлов.")
+            return None
+
+        # дефолтный файл
+        default_index = 0
+        if DEFAULT_FILE in csv_files:
+            default_index = csv_files.index(DEFAULT_FILE)
+
+        selected = st.sidebar.selectbox(
+            "Файл с товарами из GitHub:",
+            csv_files,
+            index=default_index
         )
-        return file_path
+        return os.path.join(DATA_DIR, selected)
+
     else:
-        # Загрузка файла через интерфейс
         uploaded_file = st.sidebar.file_uploader(
-            "Выберите CSV файл:",
-            type=['csv'],
-            help="Загрузите CSV файл с товарами"
+            "Загрузите CSV файл:",
+            type=["csv"]
         )
-        
-        if uploaded_file is not None:
-            # Сохраняем загруженный файл во временную директорию
-            import tempfile
-            temp_dir = tempfile.gettempdir()
-            temp_path = os.path.join(temp_dir, uploaded_file.name)
-            
-            with open(temp_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            
-            st.sidebar.success(f"Файл загружен: {uploaded_file.name}")
-            return temp_path
-        
-        return None
+        if uploaded_file is None:
+            return None
+
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        temp_path = os.path.join(temp_dir, uploaded_file.name)
+        with open(temp_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        st.sidebar.success(f"Файл загружен: {uploaded_file.name}")
+        return temp_path
 
 # CSS для красивой плитки (выравнивание кнопок и карточек)
 st.markdown("""
