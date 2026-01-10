@@ -169,81 +169,62 @@ if file_path:
     st.info(f"Текущий файл: `{file_path}`")
 
     # Инициализация данных
+    # Инициализация данных
     if 'df' not in st.session_state or \
        'current_file' not in st.session_state or \
        st.session_state['current_file'] != file_path:
-        st.session_state['df'] = load_data(file_path)
+        df_raw = load_data(file_path)
+        if not df_raw.empty and 'is_deleted' not in df_raw.columns:
+            df_raw['is_deleted'] = False
+        st.session_state['df'] = df_raw
         st.session_state['current_file'] = file_path
-        st.session_state['deleted_rows'] = set()
-
-    df = st.session_state['df'].copy()
     
-    # Удаление отмеченных строк
-    if 'deleted_rows' in st.session_state and st.session_state['deleted_rows']:
-        df = df.drop(list(st.session_state['deleted_rows']), axis=0).reset_index(drop=True)
-        st.session_state['df'] = df
-        st.session_state['deleted_rows'] = set()
-        st.rerun()
-
+    df = st.session_state['df']
+    
     if not df.empty:
-        st.write(f"Всего товаров: **{len(df)}**")
-
-        # Кнопка сохранения (всегда видна после загрузки/редактирования)
+        # фильтруем только не удалённые строки
+        df_visible = df[~df['is_deleted']].copy()
+        st.write(f"Всего товаров: **{len(df_visible)}**")
+    
         filename = os.path.basename(file_path)
-        download_data(df, f"updated_{filename}")
-
+        # скачиваем уже очищенную версию
+        download_data(df[~df['is_deleted']].drop(columns=['is_deleted']), f"updated_{filename}")
+    
         COLS_COUNT = 6
-
-        for i in range(0, len(df), COLS_COUNT):
+    
+        for i in range(0, len(df_visible), COLS_COUNT):
             cols = st.columns(COLS_COUNT)
-            batch = df.iloc[i: i + COLS_COUNT]
-
+            batch = df_visible.iloc[i: i + COLS_COUNT]
+    
             for idx, (real_index, row) in enumerate(batch.iterrows()):
                 with cols[idx]:
-                    # 1. Картинка с оптимизацией
                     img_url = get_first_image(row.get('photos'))
                     if img_url:
                         thumb_url = to_thumb(img_url)
                         st.image(thumb_url, use_container_width=True)
                     else:
                         st.text("Нет фото")
-
-                    # 2. Описание в одну строку с троеточием
+    
                     full_desc = str(row.get('description', '')).strip()
-                    if full_desc.lower() == 'nan' or full_desc == '':
-                        display_desc = "Без описания"
-                    else:
-                        display_desc = full_desc
-
+                    display_desc = "Без описания" if full_desc.lower() == 'nan' or full_desc == '' else full_desc
                     st.markdown(
                         f'<span class="one-line-desc">{display_desc}</span>',
                         unsafe_allow_html=True
                     )
-
-                    # 3. Цена
+    
                     price = row.get('price', '')
                     st.write(f"**{price}**")
-
-                    # 4. Кнопка удаления
-                    if st.button("🗑️ Удалить", key=f"delete_{real_index}", help="Удалить этот товар"):
-                        if 'deleted_rows' not in st.session_state:
-                            st.session_state['deleted_rows'] = set()
-                        st.session_state['deleted_rows'].add(real_index)
-                        st.rerun()
-                        
-                        st.markdown(
-                            """
-                            <style>
-                            .delete-btn {
-                                background-color: #ff4b4b !important;
-                                color: white !important;
-                            }
-                            </style>
-                            """,
-                            unsafe_allow_html=True
-                        )
+    
+                    # тут просто помечаем строку, без drop/reset_index/rerun
+                    if st.button("🗑️ Удалить", key=f"delete_{real_index}"):
+                        st.session_state['df'].loc[real_index, 'is_deleted'] = True
+                        # мягкий rerun вне цикла можно не вызывать — Streamlit и так перерендерит
     else:
         st.warning("Файл пуст или не загружен.")
+        if file_path:
+            filename = os.path.basename(file_path)
+            download_data(df, f"updated_{filename}")
+
         
         # Кнопка сохранения пустого файла
         if file_path:
