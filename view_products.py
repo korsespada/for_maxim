@@ -57,22 +57,53 @@ img {
     color: rgba(250, 250, 250, 0.8);
     margin-top: 4px;
 }
-.delete-btn {
+.card-selected {
+    border: 2px solid #ff4b4b;
+    box-shadow: 0 0 10px rgba(255, 75, 75, 0.6);
+}
+.fixed-delete-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background-color: rgba(32, 33, 36, 0.95);
+    padding: 10px 20px;
+    border-top: 1px solid #444;
+    z-index: 9999;
+}
+.fixed-delete-bar-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.fixed-delete-bar button[kind="secondary"] {
     background-color: #ff4b4b !important;
     color: white !important;
-    border: none !important;
-    border-radius: 4px !important;
-    padding: 4px 8px !important;
-    font-size: 12px !important;
-    margin-top: 5px !important;
 }
-.delete-btn:hover {
-    background-color: #ff3333 !important;
+.page-link {
+    display: inline-block;
+    padding: 4px 8px;
+    margin: 0 2px;
+    border-radius: 4px;
+    cursor: pointer;
+    background-color: #262730;
+    color: #eee;
+    font-size: 0.9rem;
+}
+.page-link-active {
+    background-color: #ff4b4b;
+    color: #fff;
+}
+.page-link-disabled {
+    cursor: default;
+    opacity: 0.5;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- Работа с файлами ----------
+# ---------- Файлы ----------
 def get_file_path():
     st.sidebar.title("📁 Настройки файла")
     upload_method = st.sidebar.radio("Способ загрузки:", ["Выбрать из репозитория", "Загрузить из компьютера"])
@@ -105,15 +136,9 @@ def load_data(file_path):
         return pd.DataFrame()
     df = pd.read_csv(file_path, sep=';')
 
-    # Предвычисление тяжёлых полей
     df['thumb_url'] = df['photos'].apply(get_first_image).apply(to_thumb)
-    df['display_desc'] = (
-        df['description']
-        .fillna('Без описания')
-        .astype(str)
-        .str.strip()
-        .replace({'nan': 'Без описания', 'NaN': 'Без описания'})
-    )
+    df['display_desc'] = df['description'].fillna('Без описания').astype(str).str.strip()
+    df.loc[df['display_desc'].str.lower().isin(['nan', 'nan.']), 'display_desc'] = 'Без описания'
     if 'is_deleted' not in df.columns:
         df['is_deleted'] = False
     return df
@@ -140,6 +165,31 @@ def download_data(df_full, filename):
         use_container_width=True
     )
 
+# ---------- Пагинация ----------
+def get_page_numbers(current, total, delta=1, ends=1):
+    pages = []
+    for i in range(1, total + 1):
+        if i <= ends or i > total - ends or abs(i - current) <= delta:
+            pages.append(i)
+        else:
+            if pages and pages[-1] != -1:
+                pages.append(-1)
+    return pages
+
+def render_pagination(current_page, total_pages, key_prefix):
+    pages = get_page_numbers(current_page, total_pages)
+    cols = st.columns(len(pages))
+    new_page = current_page
+    for i, p in enumerate(pages):
+        with cols[i]:
+            if p == -1:
+                st.markdown('<span class="page-link page-link-disabled">...</span>', unsafe_allow_html=True)
+            else:
+                cls = "page-link page-link-active" if p == current_page else "page-link"
+                if st.button(str(p), key=f"{key_prefix}_page_{p}"):
+                    new_page = p
+    return new_page
+
 # ---------- Основная логика ----------
 file_path = get_file_path()
 
@@ -147,7 +197,6 @@ if file_path:
     st.title("📦 Управление товарами")
     st.info(f"Файл: `{os.path.basename(file_path)}`")
 
-    # Инициализация DF в сессии
     if 'df' not in st.session_state or st.session_state.get('current_file') != file_path:
         st.session_state['df'] = load_data(file_path)
         st.session_state['current_file'] = file_path
@@ -164,8 +213,7 @@ if file_path:
     else:
         st.write(f"Отображается товаров: **{len(df_filtered)}** из **{len(df)}**")
 
-        # Кнопки сохранения / скачивания / массового удаления
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Обновить CSV на диске", use_container_width=True):
                 save_to_csv(df, file_path)
@@ -176,57 +224,24 @@ if file_path:
         with col2:
             filename = os.path.basename(file_path)
             download_data(df, f"updated_{filename}")
-        with col3:
-            if st.button("🗑️ Удалить выбранные", use_container_width=True):
-                if st.session_state['selected_rows']:
-                    for real_idx in list(st.session_state['selected_rows']):
-                        if real_idx in df.index:
-                            df.loc[real_idx, 'is_deleted'] = True
-                    st.session_state['df'] = df
-                    st.session_state['selected_rows'] = set()
-                    st.toast("Удалены выбранные товары", icon="🗑️")
-                    st.rerun()
-                else:
-                    st.info("Нет выбранных товаров для удаления.")
 
-        # ---------- Пагинация ----------
         PAGE_SIZE = 60
         total_pages = (len(df_filtered) + PAGE_SIZE - 1) // PAGE_SIZE
-
-        # Текущая страница
         current_page = st.session_state.get('page', 1)
         current_page = max(1, min(current_page, total_pages))
 
-        col_prev, col_page, col_next = st.columns(3)
-        with col_prev:
-            if st.button("« Предыдущая"):
-                if current_page > 1:
-                    st.session_state['page'] = current_page - 1
-                    st.rerun()
-        with col_page:
-            page_input = st.number_input(
-                "Страница",
-                min_value=1,
-                max_value=total_pages,
-                value=current_page,
-                step=1
-            )
-            if page_input != current_page:
-                st.session_state['page'] = int(page_input)
-                st.rerun()
-        with col_next:
-            if st.button("Следующая »"):
-                if current_page < total_pages:
-                    st.session_state['page'] = current_page + 1
-                    st.rerun()
+        st.markdown("### Страницы")
+        new_page = render_pagination(current_page, total_pages, key_prefix="top")
+        if new_page != current_page:
+            st.session_state['page'] = new_page
+            st.rerun()
+        current_page = st.session_state['page']
 
         start_idx = (current_page - 1) * PAGE_SIZE
         end_idx = min(start_idx + PAGE_SIZE, len(df_filtered))
         page_batch = df_filtered.iloc[start_idx:end_idx]
-
         st.caption(f"Страница {current_page} из {total_pages} • товары {start_idx + 1}–{end_idx}")
 
-        # ---------- Сетка товаров ----------
         COLS_COUNT = 6
         page_batch = page_batch.copy()
 
@@ -235,43 +250,75 @@ if file_path:
             sub_batch = page_batch.iloc[i: i + COLS_COUNT]
 
             for idx, (row_idx, row) in enumerate(sub_batch.iterrows()):
-                real_idx = row_idx  # индекс в полном df
+                real_idx = row_idx
+                selected = real_idx in st.session_state['selected_rows']
+
                 with cols[idx]:
-                    # Картинка
+                    card_class = "card-selected" if selected else ""
+                    st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
+
+                    img_clicked = st.button(
+                        " ",
+                        key=f"imgbtn_{real_idx}",
+                    )
                     if row.get('thumb_url'):
                         st.image(row['thumb_url'], use_container_width=True)
                     else:
                         st.text("Нет фото")
 
-                    # Описание в одну строку
+                    if img_clicked:
+                        if selected:
+                            st.session_state['selected_rows'].discard(real_idx)
+                        else:
+                            st.session_state['selected_rows'].add(real_idx)
+                        st.rerun()
+
                     desc = row.get('display_desc', 'Без описания')
                     st.markdown(
                         f'<span class="one-line-desc">{desc}</span>',
                         unsafe_allow_html=True
                     )
 
-                    # Цена
                     price = row.get('price', '')
                     st.write(f"**{price}**")
 
-                    # Чекбокс выбора для массового удаления
-                    checked = real_idx in st.session_state['selected_rows']
-                    new_checked = st.checkbox(
-                        "Выбрать",
-                        key=f"select_{real_idx}",
-                        value=checked
-                    )
-                    if new_checked and not checked:
-                        st.session_state['selected_rows'].add(real_idx)
-                    if not new_checked and checked:
-                        st.session_state['selected_rows'].discard(real_idx)
+                    st.markdown("</div>", unsafe_allow_html=True)
 
-                    # Быстрое одиночное удаление
-                    if st.button("🗑️", key=f"delete_{real_idx}", help="Удалить товар"):
+        st.markdown("### Страницы")
+        new_page_bottom = render_pagination(current_page, total_pages, key_prefix="bottom")
+        if new_page_bottom != current_page:
+            st.session_state['page'] = new_page_bottom
+            st.rerun()
+
+        st.markdown(
+            """
+<div class="fixed-delete-bar">
+  <div class="fixed-delete-bar-inner">
+    <div>
+      <strong>Выбрано товаров:</strong> <span id="selected-count"></span>
+    </div>
+    <div id="delete-button-container"></div>
+  </div>
+</div>
+<script>
+</script>
+""",
+            unsafe_allow_html=True,
+        )
+        selected_count = len(st.session_state['selected_rows'])
+        st.markdown(
+            f"<script>document.getElementById('selected-count').innerText = '{selected_count}';</script>",
+            unsafe_allow_html=True,
+        )
+        if selected_count > 0:
+            if st.button("🗑️ Удалить выбранные", key="fixed_delete_button"):
+                for real_idx in list(st.session_state['selected_rows']):
+                    if real_idx in df.index:
                         df.loc[real_idx, 'is_deleted'] = True
-                        st.session_state['df'] = df
-                        st.session_state['selected_rows'].discard(real_idx)
-                        st.rerun()
+                st.session_state['df'] = df
+                st.session_state['selected_rows'] = set()
+                st.toast("Удалены выбранные товары", icon="🗑️")
+                st.rerun()
 else:
     st.title("📦 Управление товарами")
     st.warning("Выберите файл для начала работы.")
