@@ -77,23 +77,6 @@ img {
     align-items: center;
     gap: 12px;
 }
-.pagination {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-}
-.page-pill {
-    padding: 4px 10px;
-    border-radius: 999px;
-    background-color: #262730;
-    color: #eee;
-    font-size: 0.9rem;
-}
-.page-pill-active {
-    background-color: #ff4b4b;
-    color: #fff;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -160,31 +143,6 @@ def download_data(df_full, filename):
         use_container_width=True
     )
 
-# ---------- Пагинация ----------
-def get_page_numbers(current, total, delta=1, ends=1):
-    pages = []
-    for i in range(1, total + 1):
-        if i <= ends or i > total - ends or abs(i - current) <= delta:
-            pages.append(i)
-        else:
-            if pages and pages[-1] != -1:
-                pages.append(-1)
-    return pages
-
-def pagination_widget(current_page, total_pages, key_prefix):
-    pages = get_page_numbers(current_page, total_pages)
-    cols = st.columns(len(pages))
-    new_page = current_page
-    for i, p in enumerate(pages):
-        with cols[i]:
-            if p == -1:
-                st.markdown('<span class="page-pill">...</span>', unsafe_allow_html=True)
-            else:
-                cls = "page-pill-active" if p == current_page else "page-pill"
-                if st.button(str(p), key=f"{key_prefix}_page_{p}"):
-                    new_page = p
-    return new_page
-
 # ---------- Основная логика ----------
 file_path = get_file_path()
 
@@ -220,15 +178,21 @@ if file_path:
             filename = os.path.basename(file_path)
             download_data(df, f"updated_{filename}")
 
+        # --------- пагинация счётчиком ----------
         PAGE_SIZE = 60
         total_pages = (len(df_filtered) + PAGE_SIZE - 1) // PAGE_SIZE
         current_page = st.session_state.get('page', 1)
         current_page = max(1, min(current_page, total_pages))
 
-        st.subheader("Страницы")
-        new_page = pagination_widget(current_page, total_pages, key_prefix="top")
-        if new_page != current_page:
-            st.session_state['page'] = new_page
+        page = st.number_input(
+            "Страница",
+            min_value=1,
+            max_value=max(1, total_pages),
+            value=current_page,
+            step=1
+        )
+        if page != current_page:
+            st.session_state['page'] = int(page)
             st.rerun()
         current_page = st.session_state['page']
 
@@ -278,37 +242,30 @@ if file_path:
 
                     st.markdown("</div>", unsafe_allow_html=True)
 
-        st.subheader("Страницы")
-        new_page_bottom = pagination_widget(current_page, total_pages, key_prefix="bottom")
-        if new_page_bottom != current_page:
-            st.session_state['page'] = new_page_bottom
-            st.rerun()
-
+        # --------- фиксированная нижняя панель ----------
         selected_count = len(st.session_state['selected_rows'])
 
-        # нижняя панель с кнопкой удаления
-        delete_col = st.columns(1)[0]
-        with delete_col:
-            st.markdown(
-                f"""
+        st.markdown(
+            f"""
 <div class="fixed-delete-bar">
   <div class="fixed-delete-bar-inner">
     <span>Выбрано: {selected_count}</span>
   </div>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
-            # сама кнопка как обычный st.button, но ниже по дереву
-            if selected_count > 0:
-                if st.button("🗑️ Удалить выбранные", key="delete_selected"):
-                    for real_idx in list(st.session_state['selected_rows']):
-                        if real_idx in df.index:
-                            df.loc[real_idx, 'is_deleted'] = True
-                    st.session_state['df'] = df
-                    st.session_state['selected_rows'] = set()
-                    st.toast("Удалены выбранные товары", icon="🗑️")
-                    st.rerun()
+            unsafe_allow_html=True,
+        )
+
+        # сама кнопка (обычный st.button, но логика удаления)
+        if selected_count > 0:
+            if st.button("🗑️ Удалить выбранные", key="delete_selected"):
+                for real_idx in list(st.session_state['selected_rows']):
+                    if real_idx in df.index:
+                        df.loc[real_idx, 'is_deleted'] = True
+                st.session_state['df'] = df
+                st.session_state['selected_rows'] = set()
+                st.toast("Удалены выбранные товары", icon="🗑️")
+                st.rerun()
 else:
     st.title("📦 Управление товарами")
     st.warning("Выберите файл для начала работы.")
