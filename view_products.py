@@ -180,21 +180,35 @@ if file_path:
 
         # --------- пагинация счётчиком ----------
         PAGE_SIZE = 60
-        total_pages = (len(df_filtered) + PAGE_SIZE - 1) // PAGE_SIZE
+        total_pages = max(1, (len(df_filtered) + PAGE_SIZE - 1) // PAGE_SIZE)
         current_page = st.session_state.get('page', 1)
         current_page = max(1, min(current_page, total_pages))
-
-        page = st.number_input(
-            "Страница",
-            min_value=1,
-            max_value=max(1, total_pages),
-            value=current_page,
-            step=1
-        )
+        
+        c_prev, c_num, c_next = st.columns([1,2,1])
+        with c_prev:
+            if st.button("◀", key="page_prev") and current_page > 1:
+                st.session_state['page'] = current_page - 1
+                st.rerun()
+        with c_num:
+            page = st.number_input(
+                "Страница",
+                min_value=1,
+                max_value=total_pages,
+                value=current_page,
+                step=1,
+                label_visibility="collapsed"
+            )
+        with c_next:
+            if st.button("▶", key="page_next") and current_page < total_pages:
+                st.session_state['page'] = current_page + 1
+                st.rerun()
+        
         if page != current_page:
             st.session_state['page'] = int(page)
             st.rerun()
+        
         current_page = st.session_state['page']
+
 
         start_idx = (current_page - 1) * PAGE_SIZE
         end_idx = min(start_idx + PAGE_SIZE, len(df_filtered))
@@ -244,19 +258,20 @@ if file_path:
 
         # --------- фиксированная нижняя панель ----------
         selected_count = len(st.session_state['selected_rows'])
-
+        
+        # HTML-плашка снизу (фиксированная)
         st.markdown(
             f"""
-<div class="fixed-delete-bar">
-  <div class="fixed-delete-bar-inner">
-    <span>Выбрано: {selected_count}</span>
-  </div>
-</div>
-""",
+        <div class="fixed-delete-bar">
+          <div class="fixed-delete-bar-inner">
+            <span>Выбрано: {selected_count}</span>
+          </div>
+        </div>
+        """,
             unsafe_allow_html=True,
         )
-
-        # сама кнопка (обычный st.button, но логика удаления)
+        
+        # Кнопка удаления (логика) — обычный st.button, может быть где угодно
         if selected_count > 0:
             if st.button("🗑️ Удалить выбранные", key="delete_selected"):
                 for real_idx in list(st.session_state['selected_rows']):
@@ -266,6 +281,7 @@ if file_path:
                 st.session_state['selected_rows'] = set()
                 st.toast("Удалены выбранные товары", icon="🗑️")
                 st.rerun()
+
 else:
     st.title("📦 Управление товарами")
     st.warning("Выберите файл для начала работы.")
